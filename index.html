@@ -1,0 +1,67 @@
+---
+layout: default
+---
+
+<header>
+  <h1>TORHYMNE-QUIZ</h1>
+  <p class="subtitle">Erkennst du die Torhymne?</p>
+</header>
+
+<main>
+  <div id="loading">
+    <p>Daten werden geladen...</p>
+  </div>
+
+  <div id="error" hidden>
+    <p>Fehler beim Laden der Daten. Bitte versuche es später erneut.</p>
+  </div>
+
+  <div id="game" hidden>
+    <div style="text-align: center;">
+      <button id="start-btn" type="button">QUIZ STARTEN</button>
+    </div>
+
+    <div id="quiz-round" hidden>
+      <p id="round-progress"></p>
+
+      <div id="player-container">
+        <iframe
+          id="player"
+          src=""
+          allow="autoplay; encrypted-media"
+          allowfullscreen
+          frameborder="0"
+        ></iframe>
+      </div>
+
+      <div id="quiz-controls">
+        <select id="club-select">
+          <option value="" disabled selected>Wähle den Verein...</option>
+        </select>
+        <button id="check-btn" type="button">WEITER</button>
+      </div>
+
+      <div id="feedback" hidden>
+        <p id="feedback-text"></p>
+      </div>
+    </div>
+
+    <div id="results" hidden>
+      <h2>ERGEBNIS</h2>
+      <p id="results-correct"></p>
+      <p id="results-wrong"></p>
+      <p id="results-total"></p>
+      <button id="next-round-btn" type="button">ZUR NÄCHSTEN RUNDE</button>
+    </div>
+  </div>
+
+  <div id="overlay">
+    <div id="overlay-content">
+      <span>TOR!</span>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <p>Ein Bundesliga-Torhymnen-Quiz</p>
+</footer>

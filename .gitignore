@@ -1,0 +1,32 @@
+# Jekyll build output
+_site/
+.jekyll-cache/
+.jekyll-metadata
+.sass-cache/
+
+# Ruby
+Gemfile.lock
+
+# Planning and prompt files
+prompt.md
+plan.md
+plan2.md
+plan3.md
+plan4.md
+plan5.md
+CLAUDE.md
+
+# Data export
+vereine_GSheet_table.txt
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
