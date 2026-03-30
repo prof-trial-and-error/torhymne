@@ -13,6 +13,7 @@ let wrongCount = 0;
 
 // --- YouTube IFrame API state ---
 let ytPlayer = null;
+let ytPlayerReady = false;
 let ytApiReady = false;
 let dataReady = false;
 
@@ -24,6 +25,7 @@ const gameEl = document.getElementById('game');
 const startBtn = document.getElementById('start-btn');
 const quizRound = document.getElementById('quiz-round');
 const roundProgress = document.getElementById('round-progress');
+const playBtn = document.getElementById('play-btn');
 const selectEl = document.getElementById('club-select');
 const checkBtn = document.getElementById('check-btn');
 const feedbackEl = document.getElementById('feedback');
@@ -35,20 +37,67 @@ const resultsWrong = document.getElementById('results-wrong');
 const resultsTotal = document.getElementById('results-total');
 const nextRoundBtn = document.getElementById('next-round-btn');
 
+var YT_ERROR_MSG = 'Die Torhymne konnte leider nicht geladen werden - bitte prüfe Deine Internet-Verbindung und versuche es später noch einmal.';
+
 // --- YouTube IFrame API ready callback ---
+// Pre-create the player with no video so it is fully initialized
+// by the time the user taps "QUIZ STARTEN".
 window.onYouTubeIframeAPIReady = function () {
   ytApiReady = true;
-  tryShowGame();
+  try {
+    ytPlayer = new YT.Player('player', {
+      height: '315',
+      width: '100%',
+      playerVars: {
+        controls: 1,
+        rel: 0,
+        playsinline: 1,
+      },
+      events: {
+        onReady: function () {
+          ytPlayerReady = true;
+          tryShowGame();
+        },
+        onStateChange: onPlayerStateChange,
+        onError: function () {
+          showError(YT_ERROR_MSG);
+        },
+      },
+    });
+  } catch (e) {
+    showError(YT_ERROR_MSG);
+  }
 };
+
+// --- iOS fallback: detect stalled playback and show play button ---
+function onPlayerStateChange(event) {
+  // If the player is playing, hide the fallback play button
+  if (event.data === YT.PlayerState.PLAYING) {
+    playBtn.hidden = true;
+  }
+  // If the player is paused or unstarted right after we asked it to play,
+  // iOS likely blocked autoplay — show the manual play button
+  if (event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.UNSTARTED) {
+    // Small delay to avoid flashing the button during normal loading transitions
+    setTimeout(function () {
+      if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
+        var state = ytPlayer.getPlayerState();
+        if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.UNSTARTED || state === YT.PlayerState.CUED) {
+          playBtn.hidden = false;
+        }
+      }
+    }, 500);
+  }
+}
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', function () {
   fetchData();
 
-  // Timeout fallback: if YT API hasn't loaded after 10 seconds, show error
+  // Timeout fallback: if YT player hasn't initialized after 10 seconds, show error
   setTimeout(function () {
-    if (!ytApiReady) {
-      showError('Die Torhymne konnte leider nicht geladen werden - bitte prüfe Deine Internet-Verbindung und versuche es später noch einmal.');
+    if (!ytPlayerReady) {
+      showError(YT_ERROR_MSG);
     }
   }, 10000);
 
@@ -60,15 +109,23 @@ document.addEventListener('DOMContentLoaded', function () {
 
   checkBtn.addEventListener('click', checkAnswer);
 
+  // iOS fallback play button — tapping provides a fresh user gesture
+  playBtn.addEventListener('click', function () {
+    if (ytPlayer && typeof ytPlayer.playVideo === 'function') {
+      ytPlayer.playVideo();
+    }
+    playBtn.hidden = true;
+  });
+
   nextRoundBtn.addEventListener('click', function () {
     resultsEl.hidden = true;
     startBtn.hidden = false;
   });
 });
 
-// --- Show game only when both data and YT API are ready ---
+// --- Show game only when data, YT API, and player are all ready ---
 function tryShowGame() {
-  if (dataReady && ytApiReady) {
+  if (dataReady && ytApiReady && ytPlayerReady) {
     loadingEl.hidden = true;
     gameEl.hidden = false;
   }
@@ -125,40 +182,6 @@ function extractVideoId(url) {
   return url;
 }
 
-// --- YouTube Player ---
-function createPlayer(videoId, startTime, endTime) {
-  try {
-    ytPlayer = new YT.Player('player', {
-      height: '315',
-      width: '100%',
-      videoId: videoId,
-      playerVars: {
-        autoplay: 1,
-        controls: 1,
-        rel: 0,
-        playsinline: 1,
-        start: startTime,
-        end: endTime,
-      },
-      events: {
-        onError: function () {
-          showError('Die Torhymne konnte leider nicht geladen werden - bitte prüfe Deine Internet-Verbindung und versuche es später noch einmal.');
-        },
-      },
-    });
-  } catch (e) {
-    showError('Die Torhymne konnte leider nicht geladen werden - bitte prüfe Deine Internet-Verbindung und versuche es später noch einmal.');
-  }
-}
-
-function loadNextVideo(videoId, startTime, endTime) {
-  ytPlayer.loadVideoById({
-    videoId: videoId,
-    startSeconds: startTime,
-    endSeconds: endTime,
-  });
-}
-
 // --- Round Logic ---
 function startRound() {
   roundOrder = shuffle(clubs);
@@ -174,18 +197,18 @@ function loadQuestion() {
   // Progress
   roundProgress.textContent = 'Frage ' + (currentIndex + 1) + ' von ' + roundOrder.length;
 
-  // Play video via YouTube API
+  // Play video via YouTube API — player is already initialized
   var videoId = extractVideoId(club.YoutubeURL || club.YoutubeID);
   var startTime = parseInt(club.StartTime, 10) || 0;
   var endTime = parseInt(club.EndTime, 10) || 0;
 
-  if (!ytPlayer) {
-    // First question: create the player (within user gesture from "QUIZ STARTEN" click)
-    createPlayer(videoId, startTime, endTime);
-  } else {
-    // Subsequent questions: reuse the same player instance
-    loadNextVideo(videoId, startTime, endTime);
-  }
+  playBtn.hidden = true;
+  ytPlayer.loadVideoById({
+    videoId: videoId,
+    startSeconds: startTime,
+    endSeconds: endTime,
+  });
+  ytPlayer.playVideo();
 
   // Populate dropdown — sorted alphabetically
   var names = clubs.map(function (c) { return c.Club; }).sort();
