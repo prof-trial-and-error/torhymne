@@ -11,14 +11,19 @@ let currentIndex = 0;
 let correctCount = 0;
 let wrongCount = 0;
 
+// --- YouTube IFrame API state ---
+let ytPlayer = null;
+let ytApiReady = false;
+let dataReady = false;
+
 // --- DOM refs ---
 const loadingEl = document.getElementById('loading');
 const errorEl = document.getElementById('error');
+const errorTextEl = document.querySelector('#error p');
 const gameEl = document.getElementById('game');
 const startBtn = document.getElementById('start-btn');
 const quizRound = document.getElementById('quiz-round');
 const roundProgress = document.getElementById('round-progress');
-const playerEl = document.getElementById('player');
 const selectEl = document.getElementById('club-select');
 const checkBtn = document.getElementById('check-btn');
 const feedbackEl = document.getElementById('feedback');
@@ -30,9 +35,22 @@ const resultsWrong = document.getElementById('results-wrong');
 const resultsTotal = document.getElementById('results-total');
 const nextRoundBtn = document.getElementById('next-round-btn');
 
+// --- YouTube IFrame API ready callback ---
+window.onYouTubeIframeAPIReady = function () {
+  ytApiReady = true;
+  tryShowGame();
+};
+
 // --- Init ---
 document.addEventListener('DOMContentLoaded', function () {
   fetchData();
+
+  // Timeout fallback: if YT API hasn't loaded after 10 seconds, show error
+  setTimeout(function () {
+    if (!ytApiReady) {
+      showError('Die Torhymne konnte leider nicht geladen werden - bitte prüfe Deine Internet-Verbindung und versuche es später noch einmal.');
+    }
+  }, 10000);
 
   startBtn.addEventListener('click', function () {
     startBtn.hidden = true;
@@ -48,6 +66,14 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 });
 
+// --- Show game only when both data and YT API are ready ---
+function tryShowGame() {
+  if (dataReady && ytApiReady) {
+    loadingEl.hidden = true;
+    gameEl.hidden = false;
+  }
+}
+
 // --- Fetch data from Google Sheets API ---
 function fetchData() {
   fetch(API_URL)
@@ -61,16 +87,19 @@ function fetchData() {
         return;
       }
       clubs = data;
-      loadingEl.hidden = true;
-      gameEl.hidden = false;
+      dataReady = true;
+      tryShowGame();
     })
     .catch(function () {
       showError();
     });
 }
 
-function showError() {
+function showError(message) {
   loadingEl.hidden = true;
+  if (message) {
+    errorTextEl.textContent = message;
+  }
   errorEl.hidden = false;
 }
 
@@ -96,6 +125,40 @@ function extractVideoId(url) {
   return url;
 }
 
+// --- YouTube Player ---
+function createPlayer(videoId, startTime, endTime) {
+  try {
+    ytPlayer = new YT.Player('player', {
+      height: '315',
+      width: '100%',
+      videoId: videoId,
+      playerVars: {
+        autoplay: 1,
+        controls: 1,
+        rel: 0,
+        playsinline: 1,
+        start: startTime,
+        end: endTime,
+      },
+      events: {
+        onError: function () {
+          showError('Die Torhymne konnte leider nicht geladen werden - bitte prüfe Deine Internet-Verbindung und versuche es später noch einmal.');
+        },
+      },
+    });
+  } catch (e) {
+    showError('Die Torhymne konnte leider nicht geladen werden - bitte prüfe Deine Internet-Verbindung und versuche es später noch einmal.');
+  }
+}
+
+function loadNextVideo(videoId, startTime, endTime) {
+  ytPlayer.loadVideoById({
+    videoId: videoId,
+    startSeconds: startTime,
+    endSeconds: endTime,
+  });
+}
+
 // --- Round Logic ---
 function startRound() {
   roundOrder = shuffle(clubs);
@@ -111,13 +174,18 @@ function loadQuestion() {
   // Progress
   roundProgress.textContent = 'Frage ' + (currentIndex + 1) + ' von ' + roundOrder.length;
 
-  // Update YouTube iframe (soundbar mode)
+  // Play video via YouTube API
   var videoId = extractVideoId(club.YoutubeURL || club.YoutubeID);
-  var src = 'https://www.youtube.com/embed/' + videoId
-    + '?start=' + club.StartTime
-    + '&end=' + club.EndTime
-    + '&autoplay=1&controls=1&rel=0';
-  playerEl.src = src;
+  var startTime = parseInt(club.StartTime, 10) || 0;
+  var endTime = parseInt(club.EndTime, 10) || 0;
+
+  if (!ytPlayer) {
+    // First question: create the player (within user gesture from "QUIZ STARTEN" click)
+    createPlayer(videoId, startTime, endTime);
+  } else {
+    // Subsequent questions: reuse the same player instance
+    loadNextVideo(videoId, startTime, endTime);
+  }
 
   // Populate dropdown — sorted alphabetically
   var names = clubs.map(function (c) { return c.Club; }).sort();
@@ -191,4 +259,9 @@ function showResults() {
   resultsCorrect.textContent = 'Richtig: ' + correctCount;
   resultsWrong.textContent = 'Falsch: ' + wrongCount;
   resultsTotal.textContent = 'Gesamt: ' + clubs.length + ' Torhymnen';
+
+  // Stop playback
+  if (ytPlayer && typeof ytPlayer.stopVideo === 'function') {
+    ytPlayer.stopVideo();
+  }
 }
